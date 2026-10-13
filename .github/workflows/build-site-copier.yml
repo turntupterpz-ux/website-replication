@@ -1,0 +1,50 @@
+name: Build Site Copier
+
+on:
+  push:
+    paths:
+      - "site-copier/**"
+      - ".github/workflows/build-site-copier.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: SiteCopier-Windows
+          - os: macos-latest
+            name: SiteCopier-Mac
+          - os: ubuntu-latest
+            name: SiteCopier-Linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: site-copier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller requests beautifulsoup4
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: pyinstaller --onefile --noconsole --name SiteCopier app.py
+
+      - name: Build (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --windowed --name SiteCopier app.py
+          cd dist && ditto -c -k --keepParent SiteCopier.app SiteCopier-Mac.zip && rm -rf SiteCopier SiteCopier.app
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: pyinstaller --onefile --name SiteCopier app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: site-copier/dist/*

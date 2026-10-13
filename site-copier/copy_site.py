@@ -60,7 +60,9 @@ EDITOR_SNIPPET = """
 
 
 class SiteCopier:
-    def __init__(self, start_url, out_dir, max_pages):
+    def __init__(self, start_url, out_dir, max_pages, log=print):
+        self.log = log
+        self.cancelled = False
         self.start = urldefrag(start_url)[0]
         self.host = urlparse(self.start).netloc
         self.out = os.path.abspath(out_dir)
@@ -77,7 +79,7 @@ class SiteCopier:
             r.raise_for_status()
             return r
         except requests.RequestException as e:
-            print(f"  ! skipped {url}: {e}")
+            self.log(f"  ! skipped {url}: {e}")
             return None
 
     def page_name(self, url):
@@ -122,6 +124,8 @@ class SiteCopier:
     # ---------- assets ----------
     def get_asset(self, url):
         """Download an asset once; return its local path (relative to out dir)."""
+        if self.cancelled:
+            return None
         url = urldefrag(url)[0]
         if url in self.assets:
             return self.assets[url]
@@ -135,7 +139,7 @@ class SiteCopier:
         if local.endswith(".css") or "text/css" in r.headers.get("Content-Type", ""):
             data = self.rewrite_css(r.text, url, local).encode("utf-8")
         self.save(local, data)
-        print(f"  + {url}")
+        self.log(f"  + {url}")
         return local
 
     def rewrite_css(self, css, base_url, css_local):
@@ -156,7 +160,7 @@ class SiteCopier:
         r = self.fetch(url)
         if r is None or "html" not in r.headers.get("Content-Type", "html"):
             return
-        print(f"Page: {url}")
+        self.log(f"Page: {url}")
         page_file = self.page_name(url)
         soup = BeautifulSoup(r.text, "html.parser")
 
@@ -228,7 +232,7 @@ class SiteCopier:
         queue = deque([self.start])
         self.page_name(self.start)
         done = set()
-        while queue:
+        while queue and not self.cancelled:
             url = queue.popleft()
             if url in done:
                 continue
@@ -240,8 +244,8 @@ class SiteCopier:
             with open(os.path.join(self.out, "index.html"), "w") as f:
                 f.write(f'<meta http-equiv="refresh" content="0; url={first}">')
         saved = sum(1 for v in self.assets.values() if v)
-        print(f"\nDone: {len(done)} page(s), {saved} file(s) saved to {self.out}")
-        print(f"Open {os.path.join(self.out, 'index.html')} in your browser.")
+        self.log(f"\nDone: {len(done)} page(s), {saved} file(s) saved to {self.out}")
+        self.log(f"Open {os.path.join(self.out, 'index.html')} in your browser.")
 
 
 def main():
